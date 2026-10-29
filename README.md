@@ -25,6 +25,8 @@ python3 -m http.server 8000 --directory site
 
 Abra `http://localhost:8000/`. Não há dependências de instalação nem etapa de compilação.
 
+Para uma verificação rápida, abra também `/apps/atas/`, pesquise um termo e um ID de ata, e confira os itens e o link do documento no PNCP. Antes de enviar alterações, execute `git diff --check`.
+
 ## Publicação
 
 O workflow `pages.yml` publica apenas a pasta `site/` no GitHub Pages após um envio à branch `main`. Nas configurações do repositório, escolha **Settings → Pages → Source: GitHub Actions**. O endereço esperado é `https://jorge-merida.github.io/painel-assistente/`.
