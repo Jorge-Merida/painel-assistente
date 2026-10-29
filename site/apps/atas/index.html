@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1ba2e8">
+  <meta name="description" content="Encontre atas vigentes de registro de preços no PNCP e abra os documentos na fonte oficial.">
+  <title>Atas do PNCP | Painel Assistente</title>
+  <link rel="stylesheet" href="../../assets/styles.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <div class="top-rule" aria-hidden="true"></div>
+  <header class="site-header"><div class="container header-inner">
+    <a class="brand" href="../../" aria-label="Painel Assistente, início"><span class="brand-mark" aria-hidden="true">PA</span><span>Painel Assistente</span></a>
+    <nav aria-label="Navegação principal"><a class="nav-link" href="../../">Início</a><a class="nav-link current" href="./" aria-current="page">Atas PNCP</a></nav>
+  </div></header>
+
+  <main>
+    <section class="app-hero"><div class="container">
+      <p class="eyebrow">Pesquisa de dados públicos</p>
+      <h1>Encontre atas de registro de preços vigentes.</h1>
+      <p>Pesquise pelo objeto, número da ata, órgão ou município. Confira a origem e abra o PDF diretamente no PNCP.</p>
+    </div></section>
+
+    <div class="container search-layout">
+      <form id="search-form" class="search-panel" role="search">
+        <div class="search-row">
+          <div class="field">
+            <label for="query">O que você procura?</label>
+            <input id="query" name="q" type="search" placeholder="Ex.: cama hospitalar, 535/2026, Maringá" autocomplete="off" required minlength="2">
+          </div>
+          <div class="field"><label for="uf">UF</label><select id="uf" name="uf">
+            <option value="">Todas</option><option>AC</option><option>AL</option><option>AP</option><option>AM</option><option>BA</option><option>CE</option><option>DF</option><option>ES</option><option>GO</option><option>MA</option><option>MT</option><option>MS</option><option>MG</option><option>PA</option><option>PB</option><option>PR</option><option>PE</option><option>PI</option><option>RJ</option><option>RN</option><option>RS</option><option>RO</option><option>RR</option><option>SC</option><option>SP</option><option>SE</option><option>TO</option>
+          </select></div>
+          <div class="field"><label for="adesao">Permite adesão</label><select id="adesao" name="adesao"><option value="">Qualquer situação</option><option value="sim">Sim</option><option value="nao">Não</option></select></div>
+          <button id="search-button" class="button button-primary" type="submit">Pesquisar</button>
+        </div>
+        <p class="search-note">Somente atas vigentes. Os PDFs são abertos no PNCP e baixados diretamente no seu dispositivo.</p>
+      </form>
+
+      <div class="results-head"><div><p class="eyebrow">PNCP</p><h2>Resultados</h2><p id="status" role="status" aria-live="polite">Faça uma pesquisa para começar.</p></div><span class="pill">Atas vigentes</span></div>
+      <div id="notice" class="notice" role="alert" hidden></div>
+      <div id="empty" class="empty-state" hidden>Nenhuma ata apareceu nesta parte dos resultados. Tente outro termo ou carregue mais resultados.</div>
+      <div id="results" class="result-list" aria-live="polite"></div>
+      <div class="results-more"><button id="load-more" class="button button-secondary" type="button" hidden>Carregar mais resultados</button></div>
+      <p class="source-note">Fonte: <a href="https://pncp.gov.br/app/atas" target="_blank" rel="noopener noreferrer">Portal Nacional de Contratações Públicas</a>. Os filtros de UF e adesão são conferidos nos registros exibidos. Um código de catálogo, como CATMAT, pode não estar publicado para todos os itens.</p>
+    </div>
+  </main>
+  <footer class="site-footer"><div class="container footer-inner"><span>Painel Assistente · iniciativa independente de apoio ao trabalho da equipe.</span><span>Dados e documentos: <a href="https://pncp.gov.br/" target="_blank" rel="noopener noreferrer">PNCP</a>.</span></div></footer>
+</body>
+</html>
