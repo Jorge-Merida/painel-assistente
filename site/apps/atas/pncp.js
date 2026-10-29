@@ -1,5 +1,6 @@
 const PNCP = "https://pncp.gov.br";
 const SEARCH_PAGE_SIZE = 20;
+const ITEM_PAGE_SIZE = 10;
 
 export function parseAtaReference(value) {
   const input = String(value ?? "").trim();
@@ -20,6 +21,10 @@ export function ataPageUrl(ref) {
 
 export function ataApiBase(ref) {
   return `${PNCP}/api/pncp/v1/orgaos/${ref.cnpj}/compras/${ref.anoCompra}/${ref.sequencialCompra}/atas/${ref.sequencialAta}`;
+}
+
+export function purchaseApiBase(ref) {
+  return `${PNCP}/api/pncp/v1/orgaos/${ref.cnpj}/compras/${ref.anoCompra}/${ref.sequencialCompra}`;
 }
 
 export function buildSearchUrl({ query, uf = "", page = 1 }) {
@@ -85,6 +90,18 @@ export function formatDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(iso) ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "não informada";
 }
 
+export function formatMoney(value) {
+  if (value === null || value === undefined || value === "") return "não informado";
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "não informado";
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(number);
+}
+
+export function formatQuantity(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 4 }).format(number) : "não informada";
+}
+
 async function fetchJson(url) {
   let lastError;
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -112,6 +129,22 @@ export async function searchAtas(options) {
 
 export async function fetchAta(ref) {
   return normalizeDirectAta(await fetchJson(ataApiBase(ref)), ref);
+}
+
+export async function fetchPurchaseItems(ref, page = 1) {
+  const url = new URL(`${purchaseApiBase(ref)}/itens`);
+  url.searchParams.set("pagina", String(page));
+  url.searchParams.set("tamanhoPagina", String(ITEM_PAGE_SIZE));
+  const data = await fetchJson(url);
+  const items = Array.isArray(data) ? data : data?.data;
+  if (!Array.isArray(items)) throw new Error("O PNCP devolveu uma lista de itens inesperada.");
+  return { items, hasMore: items.length === ITEM_PAGE_SIZE && (data?.totalPaginas === undefined || page < data.totalPaginas) };
+}
+
+export async function fetchItemResults(ref, itemNumber) {
+  const data = await fetchJson(`${purchaseApiBase(ref)}/itens/${itemNumber}/resultados`);
+  if (!Array.isArray(data)) throw new Error("O PNCP devolveu resultados inesperados.");
+  return data.filter((result) => result.situacaoCompraItemResultadoId !== 2 && !result.dataCancelamento && result.situacaoCompraItemResultadoNome !== "Cancelado");
 }
 
 export async function findAtaDocumentUrl(ref) {

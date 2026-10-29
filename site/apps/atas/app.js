@@ -2,8 +2,12 @@ import {
   ataPageUrl,
   brazilToday,
   fetchAta,
+  fetchItemResults,
+  fetchPurchaseItems,
   findAtaDocumentUrl,
   formatDate,
+  formatMoney,
+  formatQuantity,
   isVigente,
   normalizeSearchAta,
   parseAtaReference,
@@ -21,7 +25,7 @@ const notice = document.querySelector("#notice");
 const empty = document.querySelector("#empty");
 const loadMore = document.querySelector("#load-more");
 
-const state = { query: "", uf: "", adhesion: "", page: 1, total: 0, hasMore: false, direct: false, entries: [], seen: new Set(), busy: false, run: 0 };
+const state = { query: "", uf: "", adhesion: "", page: 1, total: 0, hasMore: false, direct: false, entries: [], renderedCount: 0, seen: new Set(), busy: false, run: 0 };
 
 function element(tag, className = "", content = "") {
   const node = document.createElement(tag);
@@ -50,6 +54,51 @@ function matchesFilters(entry) {
   return true;
 }
 
+async function mapLimited(items, limit, work) {
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const item = items[next];
+      next += 1;
+      await work(item);
+    }
+  }));
+}
+
+function makePurchaseItem(item) {
+  const row = element("article", "purchase-item");
+  row.append(element("h4", "", `Item ${item.numeroItem} · ${item.descricao || "Descrição não informada"}`));
+  const meta = element("p", "purchase-item-meta");
+  const details = [`Quantidade: ${formatQuantity(item.quantidade)} ${item.unidadeMedida || ""}`.trim()];
+  if (item.situacaoCompraItemNome) details.push(item.situacaoCompraItemNome);
+  if (item.catalogoCodigoItem) details.push(`${item.catalogo?.nome || "Catálogo"}: ${item.catalogoCodigoItem}`);
+  for (const detail of details) meta.append(element("span", "", detail));
+  row.append(meta);
+  if (item.valorUnitarioEstimado !== null && item.valorUnitarioEstimado !== undefined && !(item.orcamentoSigiloso && Number(item.valorUnitarioEstimado) === 0)) {
+    row.append(element("p", "purchase-estimate", `Valor unitário estimado: ${formatMoney(item.valorUnitarioEstimado)}`));
+  }
+  const prices = element("div", "purchase-prices", item.temResultado ? "Consultando resultado homologado…" : "Sem preço homologado publicado no PNCP.");
+  prices.setAttribute("aria-live", "polite");
+  row.append(prices);
+  return { item, row, prices };
+}
+
+function showItemResults(prices, itemResults) {
+  prices.replaceChildren();
+  if (itemResults.length === 0) {
+    prices.textContent = "Sem resultado homologado ativo publicado no PNCP.";
+    return;
+  }
+  for (const result of itemResults) {
+    const line = element("div", "purchase-price");
+    line.append(element("strong", "", `Preço unitário homologado: ${formatMoney(result.valorUnitarioHomologado)}`));
+    if (result.nomeRazaoSocialFornecedor) line.append(element("span", "", `Fornecedor: ${result.nomeRazaoSocialFornecedor}`));
+    if (result.quantidadeHomologada !== null && result.quantidadeHomologada !== undefined) line.append(element("span", "", `Quantidade homologada: ${formatQuantity(result.quantidadeHomologada)}`));
+    if (result.ordemClassificacaoSrp) line.append(element("span", "", `Classificação SRP: ${result.ordemClassificacaoSrp}º`));
+    prices.append(line);
+  }
+}
+
 function makeCard(entry) {
   const card = element("article", "result-card");
   const top = element("div", "result-top");
@@ -64,13 +113,78 @@ function makeCard(entry) {
   card.append(element("p", "result-description", entry.object));
 
   const actions = element("div", "result-actions");
+  const viewItems = element("button", "button button-primary", "Ver itens e preços");
+  viewItems.type = "button";
+  viewItems.setAttribute("aria-expanded", "false");
+  const panel = element("section", "items-panel");
+  panel.id = `items-${entry.id.replace(/[^A-Za-z0-9_-]/g, "-")}`;
+  panel.hidden = true;
+  viewItems.setAttribute("aria-controls", panel.id);
+  panel.append(element("h4", "items-title", "Itens e preços da contratação de origem"));
+  panel.append(element("p", "items-warning", "Uma contratação pode gerar várias atas. Estes são os itens e resultados publicados para a contratação; confira no documento quais pertencem a esta ata e se houve alterações de preço."));
+  const itemStatus = element("p", "items-status", "Os dados serão consultados no PNCP ao abrir esta seção.");
+  itemStatus.setAttribute("role", "status");
+  panel.append(itemStatus);
+  const itemList = element("div", "purchase-list");
+  panel.append(itemList);
+  const moreItems = element("button", "button button-secondary items-more", "Carregar mais itens");
+  moreItems.type = "button";
+  moreItems.hidden = true;
+  panel.append(moreItems);
+  let itemPage = 1;
+  let itemBusy = false;
+  let itemLoaded = false;
+  let itemHasMore = true;
+
+  async function loadItemPage() {
+    if (itemBusy || !itemHasMore) return;
+    itemBusy = true;
+    moreItems.disabled = true;
+    itemStatus.textContent = "Consultando itens no PNCP…";
+    try {
+      const data = await fetchPurchaseItems(entry.ref, itemPage);
+      const rows = data.items.map(makePurchaseItem);
+      itemList.append(...rows.map(({ row }) => row));
+      itemPage += 1;
+      itemHasMore = data.hasMore;
+      itemLoaded = true;
+      itemStatus.textContent = data.items.length === 0 && itemPage === 2
+        ? "O PNCP não publicou itens estruturados para esta contratação."
+        : `${itemList.childElementCount} ${itemList.childElementCount === 1 ? "item carregado" : "itens carregados"} da contratação de origem.`;
+      moreItems.hidden = !itemHasMore;
+      moreItems.textContent = "Carregar mais itens";
+      await mapLimited(rows.filter(({ item }) => item.temResultado), 4, async ({ item, prices }) => {
+        try {
+          showItemResults(prices, await fetchItemResults(entry.ref, item.numeroItem));
+        } catch {
+          prices.textContent = "Não foi possível consultar o resultado deste item agora.";
+        }
+      });
+    } catch {
+      itemStatus.textContent = "Não foi possível consultar os itens agora. Tente novamente.";
+      moreItems.textContent = "Tentar novamente";
+      moreItems.hidden = false;
+    } finally {
+      itemBusy = false;
+      moreItems.disabled = false;
+    }
+  }
+
+  viewItems.addEventListener("click", () => {
+    panel.hidden = !panel.hidden;
+    viewItems.setAttribute("aria-expanded", String(!panel.hidden));
+    viewItems.textContent = panel.hidden ? "Ver itens e preços" : "Ocultar itens e preços";
+    if (!panel.hidden && !itemLoaded) loadItemPage();
+  });
+  moreItems.addEventListener("click", loadItemPage);
+  actions.append(viewItems);
   const pncpLink = element("a", "button button-secondary", "Ver no PNCP");
   pncpLink.href = ataPageUrl(entry.ref);
   pncpLink.target = "_blank";
   pncpLink.rel = "noopener noreferrer";
   actions.append(pncpLink);
 
-  const download = element("button", "button button-primary", "Baixar ata");
+  const download = element("button", "button button-secondary", "Baixar ata");
   download.type = "button";
   download.addEventListener("click", async () => {
     download.disabled = true;
@@ -89,6 +203,7 @@ function makeCard(entry) {
   });
   actions.append(download);
   card.append(actions);
+  card.append(panel);
 
   const footer = element("p", "result-footer");
   const adhesion = entry.allowsAdhesion === true ? "Permite adesão" : entry.allowsAdhesion === false ? "Não permite adesão" : "Adesão não informada";
@@ -98,7 +213,8 @@ function makeCard(entry) {
 }
 
 function render() {
-  results.replaceChildren(...state.entries.map(makeCard));
+  results.append(...state.entries.slice(state.renderedCount).map(makeCard));
+  state.renderedCount = state.entries.length;
   empty.hidden = state.entries.length > 0;
   loadMore.hidden = state.direct || !state.hasMore;
   if (state.entries.length === 0) {
@@ -155,6 +271,7 @@ async function search() {
   state.hasMore = true;
   state.direct = false;
   state.entries = [];
+  state.renderedCount = 0;
   state.seen = new Set();
   results.replaceChildren();
   empty.hidden = true;
