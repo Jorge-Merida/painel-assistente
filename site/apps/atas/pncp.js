@@ -1,6 +1,6 @@
 const PNCP = "https://pncp.gov.br";
 const SEARCH_PAGE_SIZE = 20;
-const ITEM_PAGE_SIZE = 10;
+const ITEM_PAGE_SIZE = 100;
 
 export function parseAtaReference(value) {
   const input = String(value ?? "").trim();
@@ -147,10 +147,33 @@ export async function fetchItemResults(ref, itemNumber) {
   return data.filter((result) => result.situacaoCompraItemResultadoId !== 2 && !result.dataCancelamento && result.situacaoCompraItemResultadoNome !== "Cancelado");
 }
 
-export async function findAtaDocumentUrl(ref) {
-  const documents = await fetchJson(`${ataApiBase(ref)}/arquivos`);
-  if (!Array.isArray(documents) || documents.length === 0) throw new Error("O PNCP não informou um arquivo para esta ata.");
-  const document = documents.find((entry) => entry.tipoDocumentoId === 11) || documents[0];
-  if (!Number.isInteger(document.sequencialDocumento)) throw new Error("O PNCP não informou o número do documento.");
-  return `${ataApiBase(ref)}/arquivos/${document.sequencialDocumento}`;
+
+export function purchaseKey(ref) {
+  return `${ref.cnpj}/${ref.anoCompra}/${ref.sequencialCompra}`;
+}
+
+export function normalizeText(value) {
+  return String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+export async function fetchPurchaseAtas(ref) {
+  const items = [];
+  for (let page = 1; ; page += 1) {
+    const data = await fetchJson(`${purchaseApiBase(ref)}/atas?pagina=${page}&tamanhoPagina=100`);
+    const rows = Array.isArray(data) ? data : data?.data;
+    if (!Array.isArray(rows)) throw new Error("O PNCP devolveu uma lista de atas inesperada.");
+    items.push(...rows.map((item) => normalizeDirectAta(item, { ...ref, sequencialAta: item.sequencialAta })));
+    if (Array.isArray(data) || data.empty || page >= data.totalPaginas || rows.length === 0) break;
+    if (!Number.isInteger(data.totalPaginas)) throw new Error("O PNCP não informou a paginação das atas.");
+  }
+  return items;
+}
+
+export async function fetchAtaDocuments(ref) {
+  const data = await fetchJson(`${ataApiBase(ref)}/arquivos`);
+  if (!Array.isArray(data)) throw new Error("O PNCP devolveu uma lista de documentos inesperada.");
+  return data.filter((item) => Number.isInteger(item.sequencialDocumento)).map((item) => ({
+    title: item.titulo || `Documento ${item.sequencialDocumento}`,
+    url: `${ataApiBase(ref)}/arquivos/${item.sequencialDocumento}`,
+  }));
 }

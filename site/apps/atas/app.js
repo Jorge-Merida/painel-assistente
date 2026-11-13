@@ -4,7 +4,10 @@ import {
   fetchAta,
   fetchItemResults,
   fetchPurchaseItems,
-  findAtaDocumentUrl,
+  fetchPurchaseAtas,
+  fetchAtaDocuments,
+  purchaseKey,
+  normalizeText,
   formatDate,
   formatMoney,
   formatQuantity,
@@ -101,114 +104,201 @@ function showItemResults(prices, itemResults) {
 
 function makeCard(entry) {
   const card = element("article", "result-card");
-  const top = element("div", "result-top");
-  top.append(element("h3", "", entry.title));
-  top.append(element("span", "badge", "Vigente"));
-  card.append(top);
-
-  const meta = element("p", "result-meta");
-  const location = entry.uf ? `${entry.city}/${entry.uf}` : entry.city;
-  for (const text of [entry.organization, location, `Até ${formatDate(entry.end)}`]) meta.append(element("span", "", text));
-  card.append(meta);
+  const ref = entry.ref;
+  const key = purchaseKey(ref);
+  const active = () => card.isConnected;
+  card.append(element("h3", "", "Pregão / contratação de origem"));
+  card.append(element("p", "result-meta", `${entry.organization} · ${entry.city}/${entry.uf}`));
   card.append(element("p", "result-description", entry.object));
+  const purchaseLink = element("a", "text-link", `Contratação PNCP: ${key}`);
+  purchaseLink.href = `https://pncp.gov.br/app/editais/${key}`;
+  purchaseLink.target = "_blank";
+  purchaseLink.rel = "noopener noreferrer";
+  card.append(purchaseLink);
+  card.append(element("p", "items-warning", "A busca encontrou uma ata vigente desta contratação. Consulte abaixo todas as atas e localize os itens do pregão. O PNCP não informa diretamente em qual ata está cada item; confirme no documento."));
 
-  const actions = element("div", "result-actions");
-  const viewItems = element("button", "button button-primary", "Ver itens e preços");
-  viewItems.type = "button";
-  viewItems.setAttribute("aria-expanded", "false");
+  const toggle = element("button", "button button-primary", "Consultar itens e todas as atas");
+  toggle.type = "button";
+  toggle.setAttribute("aria-expanded", "false");
   const panel = element("section", "items-panel");
-  panel.id = `items-${entry.id.replace(/[^A-Za-z0-9_-]/g, "-")}`;
+  panel.id = `purchase-${key.replaceAll("/", "-")}`;
   panel.hidden = true;
-  viewItems.setAttribute("aria-controls", panel.id);
-  panel.append(element("h4", "items-title", "Itens e preços da contratação de origem"));
-  panel.append(element("p", "items-warning", "Uma contratação pode gerar várias atas. Estes são os itens e resultados publicados para a contratação; confira no documento quais pertencem a esta ata e se houve alterações de preço."));
-  const itemStatus = element("p", "items-status", "Os dados serão consultados no PNCP ao abrir esta seção.");
-  itemStatus.setAttribute("role", "status");
-  panel.append(itemStatus);
-  const itemList = element("div", "purchase-list");
-  panel.append(itemList);
-  const moreItems = element("button", "button button-secondary items-more", "Carregar mais itens");
-  moreItems.type = "button";
-  moreItems.hidden = true;
-  panel.append(moreItems);
-  let itemPage = 1;
-  let itemBusy = false;
-  let itemLoaded = false;
-  let itemHasMore = true;
+  toggle.setAttribute("aria-controls", panel.id);
+  card.append(toggle, panel);
 
-  async function loadItemPage() {
-    if (itemBusy || !itemHasMore) return;
-    itemBusy = true;
-    moreItems.disabled = true;
-    itemStatus.textContent = "Consultando itens no PNCP…";
-    try {
-      const data = await fetchPurchaseItems(entry.ref, itemPage);
-      const rows = data.items.map(makePurchaseItem);
-      itemList.append(...rows.map(({ row }) => row));
-      itemPage += 1;
-      itemHasMore = data.hasMore;
-      itemLoaded = true;
-      itemStatus.textContent = data.items.length === 0 && itemPage === 2
-        ? "O PNCP não publicou itens estruturados para esta contratação."
-        : `${itemList.childElementCount} ${itemList.childElementCount === 1 ? "item carregado" : "itens carregados"} da contratação de origem.`;
-      moreItems.hidden = !itemHasMore;
-      moreItems.textContent = "Carregar mais itens";
-      await mapLimited(rows.filter(({ item }) => item.temResultado), 4, async ({ item, prices }) => {
-        try {
-          showItemResults(prices, await fetchItemResults(entry.ref, item.numeroItem));
-        } catch {
-          prices.textContent = "Não foi possível consultar o resultado deste item agora.";
+  panel.append(element("h4", "items-title", "Atas desta contratação"));
+  panel.append(element("p", "items-warning", "A lista inclui atas encerradas e canceladas, identificadas abaixo. Confira a vigência e a possibilidade de adesão antes de usar um documento."));
+  const ataStatus = element("p", "items-status");
+  ataStatus.setAttribute("role", "status");
+  const ataList = element("div", "purchase-list");
+  const retryAtas = element("button", "button button-secondary", "Tentar consultar atas novamente");
+  retryAtas.type = "button";
+  retryAtas.hidden = true;
+  panel.append(ataStatus, ataList, retryAtas);
+  let atasLoaded = false;
+  let atasBusy = false;
+  function ataRow(ata) {
+    const row = element("article", "purchase-item");
+    row.append(element("h4", "", ata.title));
+    const situation = ata.canceled ? "Cancelada" : isVigente(ata, brazilToday()) ? "Vigente" : "Fora da vigência";
+    const adhesion = ata.allowsAdhesion === true ? "Permite adesão" : ata.allowsAdhesion === false ? "Não permite adesão" : "Adesão não informada";
+    row.append(element("p", "purchase-item-meta", `${situation} · ${formatDate(ata.start)} a ${formatDate(ata.end)} · ${adhesion}`));
+    const actions = element("div", "result-actions");
+    const link = element("a", "button button-secondary", "Ver ata no PNCP");
+    link.href = ataPageUrl(ata.ref);
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    const documents = element("div", "ata-documents");
+    const download = element("button", "button button-secondary", "Ver documentos para download");
+    download.type = "button";
+    download.addEventListener("click", async () => {
+      download.disabled = true;
+      documents.textContent = "Consultando documentos…";
+      try {
+        const files = await fetchAtaDocuments(ata.ref);
+        documents.replaceChildren();
+        for (const file of files) {
+          const fileLink = element("a", "text-link", `Abrir / baixar: ${file.title}`);
+          fileLink.href = file.url;
+          fileLink.target = "_blank";
+          fileLink.rel = "noopener noreferrer";
+          documents.append(fileLink);
         }
-      });
+        if (!files.length) documents.textContent = "Nenhum documento publicado para esta ata.";
+        download.hidden = true;
+      } catch {
+        documents.textContent = "Não foi possível consultar os documentos. Tente novamente ou abra a ata no PNCP.";
+      } finally {
+        download.disabled = false;
+      }
+    });
+    actions.append(link, download);
+    row.append(actions, documents, element("p", "result-footer", `ID PNCP: ${ata.id}`));
+    return row;
+  }
+  async function loadAtas() {
+    if (atasBusy || atasLoaded) return;
+    atasBusy = true;
+    retryAtas.hidden = true;
+    ataStatus.textContent = "Consultando todas as atas…";
+    try {
+      const atas = await fetchPurchaseAtas(ref);
+      if (!active()) return;
+      ataList.replaceChildren(...atas.map(ataRow));
+      ataStatus.textContent = `${atas.length} ata(s) publicada(s) para esta contratação.`;
+      atasLoaded = true;
     } catch {
-      itemStatus.textContent = "Não foi possível consultar os itens agora. Tente novamente.";
-      moreItems.textContent = "Tentar novamente";
-      moreItems.hidden = false;
+      ataStatus.textContent = "Não foi possível consultar todas as atas. Você ainda pode abrir a ata encontrada na busca.";
+      ataList.replaceChildren(ataRow(entry));
+      retryAtas.hidden = false;
     } finally {
-      itemBusy = false;
-      moreItems.disabled = false;
+      atasBusy = false;
     }
   }
+  retryAtas.addEventListener("click", loadAtas);
 
-  viewItems.addEventListener("click", () => {
-    panel.hidden = !panel.hidden;
-    viewItems.setAttribute("aria-expanded", String(!panel.hidden));
-    viewItems.textContent = panel.hidden ? "Ver itens e preços" : "Ocultar itens e preços";
-    if (!panel.hidden && !itemLoaded) loadItemPage();
-  });
-  moreItems.addEventListener("click", loadItemPage);
-  actions.append(viewItems);
-  const pncpLink = element("a", "button button-secondary", "Ver no PNCP");
-  pncpLink.href = ataPageUrl(entry.ref);
-  pncpLink.target = "_blank";
-  pncpLink.rel = "noopener noreferrer";
-  actions.append(pncpLink);
-
-  const download = element("button", "button button-secondary", "Baixar ata");
-  download.type = "button";
-  download.addEventListener("click", async () => {
-    download.disabled = true;
-    download.textContent = "Localizando PDF…";
+  panel.append(element("h4", "items-title item-search-title", "Localizar itens neste pregão"));
+  panel.append(element("p", "items-warning", "Valores estimados e homologados pertencem à contratação, e precisam ser conferidos na ata. A pesquisa percorre todos os itens, inclusive os ainda não exibidos."));
+  const itemForm = element("form", "item-search");
+  const field = element("div", "field");
+  const label = element("label", "", "Descrição, número do item ou código de catálogo");
+  const input = element("input");
+  input.id = `filter-${key.replaceAll("/", "-")}`;
+  input.type = "search";
+  input.value = parseAtaReference(state.query) ? "" : state.query;
+  label.htmlFor = input.id;
+  field.append(label, input);
+  const find = element("button", "button button-primary", "Buscar em todos os itens");
+  find.type = "submit";
+  itemForm.append(field, find);
+  panel.append(itemForm);
+  const itemStatus = element("p", "items-status");
+  itemStatus.setAttribute("role", "status");
+  const itemList = element("div", "purchase-list");
+  const more = element("button", "button button-secondary items-more", "Exibir mais itens encontrados");
+  more.type = "button";
+  more.hidden = true;
+  const stop = element("button", "button button-secondary items-more", "Interromper consulta");
+  stop.type = "button";
+  stop.hidden = true;
+  panel.append(itemStatus, itemList, more, stop);
+  const cached = [];
+  let page = 1;
+  let complete = false;
+  let busy = false;
+  let stopped = false;
+  let matches = [];
+  let shown = 0;
+  let filter = "";
+  async function showMore() {
+    more.disabled = true;
+    const rows = matches.slice(shown, shown + 20).map(makePurchaseItem);
+    shown += rows.length;
+    itemList.append(...rows.map(({ row }) => row));
+    more.hidden = shown >= matches.length;
+    await mapLimited(rows.filter(({ item }) => item.temResultado), 4, async ({ item, prices }) => {
+      try {
+        const values = await fetchItemResults(ref, item.numeroItem);
+        if (prices.isConnected) showItemResults(prices, values);
+      } catch {
+        prices.textContent = "Não foi possível consultar o resultado deste item agora.";
+      }
+    });
+    more.disabled = false;
+  }
+  function updateMatches() {
+    const terms = normalizeText(filter).split(/\s+/).filter(Boolean);
+    matches = cached.filter((item) => {
+      const text = normalizeText(`${item.numeroItem} ${item.descricao || ""} ${item.catalogoCodigoItem || ""}`);
+      return terms.every((term) => text.includes(term));
+    });
+  }
+  async function searchItems() {
+    if (busy) return;
+    busy = true;
+    stopped = false;
+    stop.disabled = false;
+    find.disabled = true;
+    input.disabled = true;
+    more.hidden = true;
+    stop.hidden = complete;
+    filter = input.value.trim();
+    itemList.replaceChildren();
+    shown = 0;
+    let failed = false;
     try {
-      const url = await findAtaDocumentUrl(entry.ref);
-      window.location.assign(url);
+      while (!complete && !stopped && active()) {
+        itemStatus.textContent = `Consultando página ${page} · ${cached.length} itens consultados…`;
+        const data = await fetchPurchaseItems(ref, page);
+        if (!active()) return;
+        cached.push(...data.items);
+        page += 1;
+        complete = !data.hasMore;
+      }
     } catch {
-      const message = card.querySelector(".result-error") || element("p", "result-footer result-error");
-      message.textContent = "Não foi possível localizar o PDF agora. Use “Ver no PNCP” ou tente novamente.";
-      if (!message.isConnected) card.append(message);
+      failed = true;
     } finally {
-      download.disabled = false;
-      download.textContent = "Baixar ata";
+      if (active()) {
+        updateMatches();
+        const prefix = complete ? "Consulta completa." : failed ? "A consulta falhou. Pesquise novamente para continuar." : "Consulta interrompida. Pesquise novamente para continuar.";
+        itemStatus.textContent = `${prefix} ${matches.length} item(ns) encontrado(s) em ${cached.length} consultado(s).${complete ? "" : " O resultado é parcial."}`;
+        await showMore();
+      }
+      busy = false;
+      find.disabled = false;
+      input.disabled = false;
+      stop.hidden = true;
     }
+  }
+  itemForm.addEventListener("submit", (event) => { event.preventDefault(); searchItems(); });
+  more.addEventListener("click", showMore);
+  stop.addEventListener("click", () => { stopped = true; stop.disabled = true; itemStatus.textContent = "Interrompendo após a consulta em andamento…"; });
+  toggle.addEventListener("click", () => {
+    panel.hidden = !panel.hidden;
+    toggle.setAttribute("aria-expanded", String(!panel.hidden));
+    toggle.textContent = panel.hidden ? "Consultar itens e todas as atas" : "Ocultar itens e atas";
+    if (!panel.hidden) loadAtas();
   });
-  actions.append(download);
-  card.append(actions);
-  card.append(panel);
-
-  const footer = element("p", "result-footer");
-  const adhesion = entry.allowsAdhesion === true ? "Permite adesão" : entry.allowsAdhesion === false ? "Não permite adesão" : "Adesão não informada";
-  footer.textContent = `${adhesion} · ID PNCP: ${entry.id}`;
-  card.append(footer);
   return card;
 }
 
@@ -220,7 +310,7 @@ function render() {
   if (state.entries.length === 0) {
     status.textContent = state.hasMore ? "Nenhuma ata nos resultados carregados. Você pode carregar mais." : "Nenhuma ata vigente encontrada com estes filtros.";
   } else {
-    status.textContent = `${state.entries.length} ${state.entries.length === 1 ? "ata exibida" : "atas exibidas"}${state.hasMore ? ". Há mais resultados no PNCP." : "."}`;
+    status.textContent = `${state.entries.length} ${state.entries.length === 1 ? "contratação exibida" : "contratações exibidas"}${state.hasMore ? ". Há mais resultados no PNCP." : "."}`;
   }
 }
 
@@ -241,8 +331,8 @@ async function loadNext(run) {
       state.hasMore = data.items.length === data.pageSize && page * data.pageSize < Math.min(data.total, 10000);
       for (const raw of data.items) {
         const entry = normalizeSearchAta(raw);
-        if (entry && !state.seen.has(entry.id) && matchesFilters(entry)) {
-          state.seen.add(entry.id);
+        if (entry && !state.seen.has(purchaseKey(entry.ref)) && matchesFilters(entry)) {
+          state.seen.add(purchaseKey(entry.ref));
           state.entries.push(entry);
         }
       }
@@ -251,7 +341,7 @@ async function loadNext(run) {
     render();
   } catch {
     showNotice("A busca do PNCP não respondeu agora. Tente novamente ou consulte diretamente o portal oficial pelo link abaixo.");
-    status.textContent = state.entries.length ? `${state.entries.length} atas já carregadas.` : "Busca temporariamente indisponível.";
+    status.textContent = state.entries.length ? `${state.entries.length} contratações já carregadas.` : "Busca temporariamente indisponível.";
     loadMore.hidden = !state.hasMore;
   } finally {
     setBusy(false);
