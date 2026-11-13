@@ -25,9 +25,9 @@ try {
  await wait(()=>document.querySelectorAll('.result-card').length);
  assert(document.querySelectorAll('.result-card').length===1,'Agrupamento');
  document.querySelector('.result-card > button').click();
- await wait(()=>document.querySelectorAll('.items-panel > .purchase-list:first-of-type .purchase-item').length===7);
+ await wait(()=>document.querySelectorAll('.items-panel > .ata-list .purchase-item').length===7);
  await wait(()=>document.querySelector('#results').textContent.includes('FORNECEDOR DA ATA UM')&&document.querySelector('#results').textContent.includes('Não foi possível consultar o fornecedor'));
- const ataRows=document.querySelectorAll('.items-panel > .purchase-list:first-of-type > .purchase-item');
+ const ataRows=document.querySelectorAll('.items-panel > .ata-list > .purchase-item');
  assert(ataRows[0].textContent.includes('FORNECEDOR DA ATA UM'),'Fornecedor na ata exata');
  assert(!ataRows[1].textContent.includes('FORNECEDOR DA ATA UM'),'Não atribuir fornecedor à ata vizinha');
  assert(ataRows[2].textContent.includes('Não foi possível consultar o fornecedor'),'Falha complementar isolada');
@@ -38,14 +38,14 @@ try {
  document.querySelector('.item-search').requestSubmit();await wait(()=>document.querySelector('.item-search button').disabled===false);
  assert(document.querySelector('#results').textContent.includes('resultado é parcial'),'Falha indicada como parcial');
  fail=false;document.querySelector('.item-search').requestSubmit();await wait(()=>document.querySelector('#results').textContent.includes('GM FARMA'));
- assert(document.querySelectorAll('.items-panel > .purchase-list:last-of-type .purchase-item').length===1,'Filtro sem acentos');
+ assert(document.querySelectorAll('.items-panel > .item-list .purchase-item').length===1,'Filtro sem acentos');
  assert(pages.filter(p=>p===1).length===1,'Retomada sem repetir página');
  assert(document.querySelector('#results').textContent.includes('Consulta completa.'),'Busca completa');
  document.querySelector('.item-search input').value='naoexiste';document.querySelector('.item-search').requestSubmit();await wait(()=>document.querySelector('.item-search button').disabled===false);
  assert(document.querySelector('#results').textContent.includes('0 item(ns) encontrado(s)'),'Sem resultados');
  document.querySelector('.item-search input').value='';document.querySelector('.item-search').requestSubmit();await wait(()=>document.querySelector('.item-search button').disabled===false);
- assert(document.querySelectorAll('.items-panel > .purchase-list:last-of-type .purchase-item').length===20,'Primeiros vinte itens');
- document.querySelector('.items-more').click();await wait(()=>document.querySelectorAll('.items-panel > .purchase-list:last-of-type .purchase-item').length===40);
+ assert(document.querySelectorAll('.items-panel > .item-list .purchase-item').length===20,'Primeiros vinte itens');
+ document.querySelector('.items-more').click();await wait(()=>document.querySelectorAll('.items-panel > .item-list .purchase-item').length===40);
  assert(!errors.length,errors.join(';'));
  document.querySelector('#test-result').textContent='PASS: fornecedores por ata, falha isolada, agrupamento, 7 atas, situações, múltiplos documentos, busca sem acentos além da primeira página, falha parcial, retomada, cache e filtro vazio. Páginas: '+pages;
 } catch(e){document.querySelector('#test-result').textContent='FAIL: '+e.stack;}

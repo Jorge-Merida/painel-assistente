@@ -127,15 +127,14 @@ function makeCard(entry) {
   toggle.setAttribute("aria-controls", panel.id);
   card.append(toggle, panel);
 
-  panel.append(element("h4", "items-title", "Atas desta contratação"));
-  panel.append(element("p", "items-warning", "A lista inclui atas encerradas e canceladas, identificadas abaixo. Confira a vigência e a possibilidade de adesão antes de usar um documento."));
+  const ataHeading = element("h4", "items-title ata-list-title", "Atas desta contratação");
+  const ataWarning = element("p", "items-warning", "A lista inclui atas encerradas e canceladas, identificadas abaixo. Confira a vigência e a possibilidade de adesão antes de usar um documento.");
   const ataStatus = element("p", "items-status");
   ataStatus.setAttribute("role", "status");
-  const ataList = element("div", "purchase-list");
+  const ataList = element("div", "purchase-list ata-list");
   const retryAtas = element("button", "button button-secondary", "Tentar consultar atas novamente");
   retryAtas.type = "button";
   retryAtas.hidden = true;
-  panel.append(ataStatus, ataList, retryAtas);
   let atasLoaded = false;
   let atasBusy = false;
   let supplierTasks = [];
@@ -253,7 +252,7 @@ function makeCard(entry) {
   panel.append(itemForm);
   const itemStatus = element("p", "items-status");
   itemStatus.setAttribute("role", "status");
-  const itemList = element("div", "purchase-list");
+  const itemList = element("div", "purchase-list item-list");
   const more = element("button", "button button-secondary items-more", "Exibir mais itens encontrados");
   more.type = "button";
   more.hidden = true;
@@ -261,6 +260,7 @@ function makeCard(entry) {
   stop.type = "button";
   stop.hidden = true;
   panel.append(itemStatus, itemList, more, stop);
+  panel.append(ataHeading, ataWarning, ataStatus, ataList, retryAtas);
   const cached = [];
   let page = 1;
   let complete = false;
