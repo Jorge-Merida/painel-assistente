@@ -16,6 +16,7 @@ import {
   parseAtaReference,
   searchAtas,
 } from "./pncp.js";
+import { fetchAtaSuppliers, supplierServiceEnabled } from "./suppliers.js";
 
 const form = document.querySelector("#search-form");
 const queryInput = document.querySelector("#query");
@@ -137,12 +138,47 @@ function makeCard(entry) {
   panel.append(ataStatus, ataList, retryAtas);
   let atasLoaded = false;
   let atasBusy = false;
+  let supplierTasks = [];
   function ataRow(ata) {
     const row = element("article", "purchase-item");
     row.append(element("h4", "", ata.title));
     const situation = ata.canceled ? "Cancelada" : isVigente(ata, brazilToday()) ? "Vigente" : "Fora da vigência";
     const adhesion = ata.allowsAdhesion === true ? "Permite adesão" : ata.allowsAdhesion === false ? "Não permite adesão" : "Adesão não informada";
     row.append(element("p", "purchase-item-meta", `${situation} · ${formatDate(ata.start)} a ${formatDate(ata.end)} · ${adhesion}`));
+    if (supplierServiceEnabled()) {
+      const supplierInfo = element("div", "ata-suppliers", "Aguardando consulta do fornecedor…");
+      supplierInfo.setAttribute("aria-live", "polite");
+      const retrySupplier = element("button", "button button-secondary", "Tentar consultar fornecedor novamente");
+      retrySupplier.type = "button";
+      retrySupplier.hidden = true;
+      row.append(supplierInfo, retrySupplier);
+      async function loadSuppliers() {
+        retrySupplier.hidden = true;
+        try {
+          const data = await fetchAtaSuppliers(ata, (page) => {
+            supplierInfo.textContent = `Consultando fornecedor no Compras.gov.br · página ${page}…`;
+          }, () => active() && row.isConnected);
+          if (!row.isConnected) return;
+          supplierInfo.replaceChildren();
+          if (!data.suppliers.length) {
+            supplierInfo.textContent = data.status === "unavailable"
+              ? "Fornecedor: esta ata não tem os dados necessários para a consulta complementar. Confira o documento."
+              : "Fornecedor não localizado no Compras.gov.br para esta ata. Confira o documento.";
+          } else {
+            supplierInfo.append(element("p", "", "Fornecedor(es) vinculado(s) a esta ata — fonte: Compras.gov.br"));
+            for (const supplier of data.suppliers) {
+              supplierInfo.append(element("p", "", `${supplier.name} · Identificação (CPF/CNPJ): ${supplier.id}`));
+            }
+          }
+        } catch {
+          if (!row.isConnected) return;
+          supplierInfo.textContent = "Não foi possível consultar o fornecedor agora. Os documentos da ata continuam disponíveis.";
+          retrySupplier.hidden = false;
+        }
+      }
+      retrySupplier.addEventListener("click", loadSuppliers);
+      supplierTasks.push(loadSuppliers);
+    }
     const actions = element("div", "result-actions");
     const link = element("a", "button button-secondary", "Ver ata no PNCP");
     link.href = ataPageUrl(ata.ref);
@@ -179,6 +215,7 @@ function makeCard(entry) {
   async function loadAtas() {
     if (atasBusy || atasLoaded) return;
     atasBusy = true;
+    supplierTasks = [];
     retryAtas.hidden = true;
     ataStatus.textContent = "Consultando todas as atas…";
     try {
@@ -193,6 +230,8 @@ function makeCard(entry) {
       retryAtas.hidden = false;
     } finally {
       atasBusy = false;
+      // A consulta complementar não bloqueia os itens nem os documentos.
+      void mapLimited(supplierTasks, 2, async (load) => { if (active()) await load(); });
     }
   }
   retryAtas.addEventListener("click", loadAtas);

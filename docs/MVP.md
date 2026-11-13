@@ -13,6 +13,7 @@ Permitir que uma pessoa encontre uma ata vigente de registro de preços, reconhe
 - Cartões por contratação com órgão, município/UF, objeto e link oficial; lista de todas as atas com número, vigência, adesão, ID PNCP e todos os documentos disponíveis.
 - Busca interna em todas as páginas de itens por descrição, número ou código de catálogo, sem distinção de acentos; valores estimados e homologados identificados, com fornecedores dos resultados.
 - Consulta de itens sob demanda, com progresso, interrupção e retomada após falhas; resultados parciais identificados e exibição em grupos de 20 itens.
+- Integração opcional com serviço Cloudflare para consultar fornecedores no Compras.gov.br por ID PNCP exato da ata, com identificação da fonte e mensagens de ausência de registro ou indisponibilidade. Serviço fora de `site/`, sem banco ou armazenamento de PDFs; ativação por URL pública em `config.js`.
 - Paginação por “Carregar mais resultados” e mensagens claras quando a fonte estiver indisponível.
 - Publicação estática no GitHub Pages; somente `site/` é publicado.
 

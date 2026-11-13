@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "painel-assistente-fornecedores",
+  "main": "worker.js",
+  "compatibility_date": "2026-11-13",
+  "workers_dev": true,
+  "vars": {
+    "ALLOWED_ORIGINS": "https://jorge-merida.github.io,http://localhost:8000,http://localhost:8001,http://127.0.0.1:8000"
+  },
+  "observability": { "enabled": false }
+}

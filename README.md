@@ -45,6 +45,12 @@ O PNCP pode publicar várias atas para uma contratação sem informar, em dados 
 
 Busca nacional por CATMAT, comparação de preços e busca detalhada por item estão planejados para etapas posteriores. O PNCP pode deixar o campo de código do catálogo vazio em uma contratação.
 
+### Fornecedores por ata
+
+O serviço complementar publicado está em `https://painel-assistente-fornecedores.painel-fornecedores.workers.dev`. Seu código está em `services/fornecedores/`, fora da pasta publicada pelo Pages. Quando `supplierServiceUrl` em `site/apps/atas/config.js` estiver preenchido, cada ata consulta os fornecedores no Compras.gov.br por meio do Cloudflare Worker, vinculando-os pelo ID PNCP exato da ata. A lista exibe nome, identificação (CPF/CNPJ) e fonte. Uma resposta sem correspondência é identificada como ausência de registro na fonte; falhas podem ser tentadas novamente sem impedir os documentos ou os itens. A cobertura é parcial e a consulta não substitui a conferência no documento. Com o endereço vazio, a integração fica desativada.
+
+Veja [configuração e publicação do serviço](services/fornecedores/README.md). Credenciais não fazem parte do site nem do repositório.
+
 Fontes: [API de Consulta](https://pncp.gov.br/api/consulta/swagger-ui/index.html), [manual de atas](https://pncp.gov.br/manual/pt-br/latest/ata_de_registro_de_preco/consultar_ata_de_registro_de_preco.html), [manual de itens](https://pncp.gov.br/manual/pt-br/latest/contratacao/consultar_itens_de_uma_contratacao.html) e [manual de resultados](https://pncp.gov.br/manual/pt-br/latest/contratacao/consultar_resultados_de_item_de_uma_contratacao.html).
 
 ## Verificação do fluxo no navegador

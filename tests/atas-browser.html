@@ -3,10 +3,12 @@
 <script type="module">
 const errors=[]; window.addEventListener('error',e=>errors.push(e.message));window.addEventListener('unhandledrejection',e=>errors.push(String(e.reason)));
 const raw={numero_controle_pncp:'15126437000305-1-003108/2026-000007',title:'Ata 190',description:'Equipamentos incluindo esfigmomanômetro',orgao_nome:'Hospital',municipio_nome:'Lagarto',uf:'SE',data_inicio_vigencia:'2020-01-01',data_fim_vigencia:'2999-12-31'};
+const { config } = await import('../site/apps/atas/config.js'); config.supplierServiceUrl='https://test-suppliers.workers.dev';
 let pages=[];let docCalls=0;let fail=true;let atasFail=true;
 window.fetch=async value=>{
  const url=new URL(value);let data;
- if(url.pathname==='/api/search/')data={total:2,items:[raw,{...raw,numero_controle_pncp:'15126437000305-1-003108/2026-000006'}]};
+ if(url.pathname==='/fornecedores'){const id=url.searchParams.get('ata');const page=Number(url.searchParams.get('pagina'));if(id.endsWith('-3'))return {ok:false,status:502};data={status:'ok',suppliers:id.endsWith('-1')?[{name:'FORNECEDOR DA ATA UM',id:'47751972000181'}]:[],hasMore:id.endsWith('-1')&&page===1,nextPage:2};}
+ else if(url.pathname==='/api/search/')data={total:2,items:[raw,{...raw,numero_controle_pncp:'15126437000305-1-003108/2026-000006'}]};
  else if(url.pathname.endsWith('/atas')){
  if(atasFail){atasFail=false;return {ok:false,status:503};}
  data={data:[1,2,3,4,5,6,7].map(n=>({numeroAtaRegistroPreco:String(183+n),anoAta:2026,sequencialAta:n,dataVigenciaInicio:'2020-01-01',dataVigenciaFim:n===1?'2020-10-01':'2999-12-31',cancelado:n===2,possibilidadeAdesao:false})),totalPaginas:1};}
@@ -24,6 +26,11 @@ try {
  assert(document.querySelectorAll('.result-card').length===1,'Agrupamento');
  document.querySelector('.result-card > button').click();
  await wait(()=>document.querySelectorAll('.items-panel > .purchase-list:first-of-type .purchase-item').length===7);
+ await wait(()=>document.querySelector('#results').textContent.includes('FORNECEDOR DA ATA UM')&&document.querySelector('#results').textContent.includes('Não foi possível consultar o fornecedor'));
+ const ataRows=document.querySelectorAll('.items-panel > .purchase-list:first-of-type > .purchase-item');
+ assert(ataRows[0].textContent.includes('FORNECEDOR DA ATA UM'),'Fornecedor na ata exata');
+ assert(!ataRows[1].textContent.includes('FORNECEDOR DA ATA UM'),'Não atribuir fornecedor à ata vizinha');
+ assert(ataRows[2].textContent.includes('Não foi possível consultar o fornecedor'),'Falha complementar isolada');
  assert(document.querySelector('#results').textContent.includes('Cancelada')&&document.querySelector('#results').textContent.includes('Fora da vigência'),'Situações de atas');
  const buttons=[...document.querySelectorAll('button')];buttons.find(b=>b.textContent==='Ver documentos para download').click();
  await wait(()=>document.querySelectorAll('.ata-documents a').length===2);
@@ -40,6 +47,6 @@ try {
  assert(document.querySelectorAll('.items-panel > .purchase-list:last-of-type .purchase-item').length===20,'Primeiros vinte itens');
  document.querySelector('.items-more').click();await wait(()=>document.querySelectorAll('.items-panel > .purchase-list:last-of-type .purchase-item').length===40);
  assert(!errors.length,errors.join(';'));
- document.querySelector('#test-result').textContent='PASS: agrupamento, 7 atas, situações, múltiplos documentos, busca sem acentos além da primeira página, falha parcial, retomada, cache e filtro vazio. Páginas: '+pages;
+ document.querySelector('#test-result').textContent='PASS: fornecedores por ata, falha isolada, agrupamento, 7 atas, situações, múltiplos documentos, busca sem acentos além da primeira página, falha parcial, retomada, cache e filtro vazio. Páginas: '+pages;
 } catch(e){document.querySelector('#test-result').textContent='FAIL: '+e.stack;}
 </script></body></html>
